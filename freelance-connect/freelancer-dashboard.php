@@ -11,6 +11,52 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'freelancer') {
 // Get user data
 $user_id = $_SESSION['user_id'];
 $user_name = $_SESSION['user_name'];
+
+// Get freelancer statistics
+try {
+    // Active projects (deals with status 'ongoing')
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as active_projects 
+        FROM deals 
+        WHERE freelancer_id = ? AND status = 'ongoing'
+    ");
+    $stmt->execute([$user_id]);
+    $activeProjects = $stmt->fetch()['active_projects'];
+
+    // Completed projects (deals with status 'completed')
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as completed_projects 
+        FROM deals 
+        WHERE freelancer_id = ? AND status = 'completed'
+    ");
+    $stmt->execute([$user_id]);
+    $completedProjects = $stmt->fetch()['completed_projects'];
+
+    // Total earnings (sum of bid amounts from completed deals)
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(d.bid_amount), 0) as total_earnings 
+        FROM deals d
+        WHERE d.freelancer_id = ? AND d.status = 'completed'
+    ");
+    $stmt->execute([$user_id]);
+    $totalEarnings = $stmt->fetch()['total_earnings'];
+
+    // Total proposals submitted
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as total_proposals 
+        FROM proposals 
+        WHERE freelancer_id = ?
+    ");
+    $stmt->execute([$user_id]);
+    $totalProposals = $stmt->fetch()['total_proposals'];
+
+} catch (PDOException $e) {
+    // Set default values if there's an error
+    $activeProjects = 0;
+    $completedProjects = 0;
+    $totalEarnings = 0;
+    $totalProposals = 0;
+}
 ?>
 
 <!DOCTYPE html>
@@ -58,6 +104,18 @@ $user_name = $_SESSION['user_name'];
             border-radius: 12px;
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
             text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        .stat-icon {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            color: #667eea;
         }
 
         .stat-number {
@@ -70,6 +128,7 @@ $user_name = $_SESSION['user_name'];
         .stat-label {
             color: #666;
             font-size: 0.9rem;
+            font-weight: 500;
         }
 
         .logout-btn {
@@ -105,20 +164,32 @@ $user_name = $_SESSION['user_name'];
 
         <div class="dashboard-stats">
             <div class="stat-card">
-                <div class="stat-number">0</div>
+                <div class="stat-icon">
+                    <i class="fas fa-tasks"></i>
+                </div>
+                <div class="stat-number"><?php echo $activeProjects; ?></div>
                 <div class="stat-label">Active Projects</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number">0</div>
+                <div class="stat-icon">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <div class="stat-number"><?php echo $completedProjects; ?></div>
                 <div class="stat-label">Completed Projects</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number">$0</div>
+                <div class="stat-icon">
+                    <i class="fas fa-dollar-sign"></i>
+                </div>
+                <div class="stat-number">$<?php echo number_format($totalEarnings); ?></div>
                 <div class="stat-label">Total Earnings</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number">0</div>
-                <div class="stat-label">Client Reviews</div>
+                <div class="stat-icon">
+                    <i class="fas fa-file-alt"></i>
+                </div>
+                <div class="stat-number"><?php echo $totalProposals; ?></div>
+                <div class="stat-label">Proposals Submitted</div>
             </div>
         </div>
 
@@ -130,6 +201,9 @@ $user_name = $_SESSION['user_name'];
                 </a>
                 <a href="my-proposals.php" class="btn btn-outline" style="display: inline-block;">
                     <i class="fas fa-file-alt"></i> My Proposals
+                </a>
+                <a href="freelancer-profile.php" class="btn btn-outline" style="display: inline-block;">
+                    <i class="fas fa-user"></i> My Profile
                 </a>
             </div>
         </div>
