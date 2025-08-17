@@ -18,9 +18,17 @@ $budget_min = $_GET['budget_min'] ?? '';
 $budget_max = $_GET['budget_max'] ?? '';
 $project_type = $_GET['project_type'] ?? '';
 
-// Build query with filters
+// Build query with filters - exclude projects that have been accepted or completed
 $where_conditions = ["p.status = 'open'"];
 $params = [];
+
+// Exclude projects that have accepted proposals (deals created)
+$where_conditions[] = "p.id NOT IN (
+    SELECT DISTINCT pr.project_id 
+    FROM proposals pr 
+    INNER JOIN deals d ON pr.id = d.proposal_id 
+    WHERE d.status IN ('ongoing', 'confirmed', 'completed')
+)";
 
 if (!empty($search)) {
     $where_conditions[] = "(p.title LIKE ? OR p.description LIKE ? OR p.skills_required LIKE ?)";

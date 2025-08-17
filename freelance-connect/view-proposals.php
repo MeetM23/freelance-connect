@@ -10,6 +10,48 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'client') {
 
 $user_id = $_SESSION['user_id'];
 $user_name = $_SESSION['user_name'];
+$message = '';
+$error = '';
+
+// Handle proposal deletion
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_proposal'])) {
+    $proposal_id = $_POST['proposal_id'];
+
+    // Verify the proposal belongs to a project owned by the current user
+    try {
+        $stmt = $pdo->prepare("
+            SELECT pr.id FROM proposals pr 
+            JOIN projects p ON pr.project_id = p.id 
+            WHERE pr.id = ? AND p.client_id = ?
+        ");
+        $stmt->execute([$proposal_id, $user_id]);
+
+        if ($stmt->rowCount() > 0) {
+            // Check if proposal has been accepted (has a deal)
+            $stmt = $pdo->prepare("SELECT COUNT(*) as deal_count FROM deals WHERE proposal_id = ?");
+            $stmt->execute([$proposal_id]);
+            $deal_count = $stmt->fetch()['deal_count'];
+
+            if ($deal_count > 0) {
+                $error = "Cannot delete proposal. It has been accepted and is part of an active deal.";
+            } else {
+                // Delete the proposal
+                $stmt = $pdo->prepare("DELETE FROM proposals WHERE id = ?");
+                $stmt->execute([$proposal_id]);
+
+                if ($stmt->rowCount() > 0) {
+                    $message = "Proposal deleted successfully!";
+                } else {
+                    $error = "Failed to delete proposal.";
+                }
+            }
+        } else {
+            $error = "Proposal not found or you don't have permission to delete it.";
+        }
+    } catch (PDOException $e) {
+        $error = "Error deleting proposal: " . $e->getMessage();
+    }
+}
 
 // Handle proposal actions (accept/reject)
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
@@ -34,12 +76,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
                 $deal_id = $pdo->lastInsertId();
 
-                // Redirect to deal page
-                header("Location: deal-page-simple.php?id=" . $deal_id);
+                // Redirect to deal understanding page
+                header("Location: client-dashboard.php?id=" . $deal_id);
                 exit();
-            }
+            } elseif ($action === 'reject') {
+                // Delete the rejected proposal
+                $stmt = $pdo->prepare("DELETE FROM proposals WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE client_id = ?)");
+                $stmt->execute([$proposal_id, $user_id]);
 
-            $success_message = "Proposal " . $action . "ed successfully!";
+                $success_message = "Proposal rejected and removed successfully!";
+            } else {
+                $success_message = "Proposal " . $action . "ed successfully!";
+            }
         } catch (PDOException $e) {
             $error_message = "Failed to " . $action . " proposal. Please try again.";
         }
@@ -58,7 +106,7 @@ try {
     $projects = [];
 }
 
-// Build query for proposals
+// Build query for proposals (exclude rejected proposals since they are deleted)
 $where_conditions = ["p.client_id = ?"];
 $params = [$user_id];
 
@@ -79,7 +127,8 @@ try {
                u.first_name, u.last_name,
                u.email as freelancer_email,
                u.skills as freelancer_skills,
-               u.hourly_rate as freelancer_rate
+               u.hourly_rate as freelancer_rate,
+               (SELECT COUNT(*) FROM deals WHERE proposal_id = pr.id) as deal_count
         FROM proposals pr
         LEFT JOIN projects p ON pr.project_id = p.id
         LEFT JOIN categories c ON p.category_id = c.id
@@ -108,6 +157,51 @@ try {
     <link rel="stylesheet" href="style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .alert {
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            border: none;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .delete-confirmation {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+            padding: 0.75rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .delete-confirmation i {
+            color: #f39c12;
+        }
+    </style>
 </head>
 
 <body>
@@ -118,6 +212,14 @@ try {
             <h1 class="proposals-title">View Proposals</h1>
             <p class="proposals-subtitle">Review and manage proposals submitted by freelancers</p>
         </div>
+
+        <?php if ($message): ?>
+            <div class="alert alert-success"><?php echo htmlspecialchars($message); ?></div>
+        <?php endif; ?>
+
+        <?php if ($error): ?>
+            <div class="alert alert-error"><?php echo htmlspecialchars($error); ?></div>
+        <?php endif; ?>
 
         <?php if (isset($success_message)): ?>
             <div class="success-message"
@@ -250,8 +352,9 @@ try {
                                     </button>
                                 </form>
                             <?php elseif ($proposal['status'] === 'accepted'): ?>
-                                <a href="deal-page-simple.php?proposal_id=<?php echo $proposal['id']; ?>" class="action-btn btn-outline">
-                                    <i class="fas fa-folder"></i> View Deal
+                                <a href="client-project-progress.php?proposal_id=<?php echo $proposal['id']; ?>"
+                                    class="action-btn btn-outline">
+                                    <i class="fas fa-chart-line"></i> View Progress
                                 </a>
                             <?php endif; ?>
 
@@ -259,6 +362,21 @@ try {
                                 class="action-btn btn-secondary">
                                 <i class="fas fa-user"></i> View Profile
                             </a>
+
+                            <?php if ($proposal['deal_count'] == 0): ?>
+                                <!-- <form method="POST" action="" style="display: inline;"
+                                    onsubmit="return confirm('Are you sure you want to delete this proposal? This action cannot be undone.');">
+                                    <input type="hidden" name="proposal_id" value="<?php echo $proposal['id']; ?>">
+                                    <button type="submit" name="delete_proposal" class="action-btn btn-danger">
+                                        <i class="fas fa-trash"></i> Delete
+                                    </button>
+                                </form> -->
+                            <?php else: ?>
+                                <div class="delete-confirmation">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    <span>Cannot delete - proposal accepted</span>
+                                </div>
+                            <?php endif; ?>
                         </div>
                     </div>
                 <?php endforeach; ?>

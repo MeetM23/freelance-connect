@@ -24,23 +24,31 @@
                 <div class="nav-menu" id="nav-menu">
                     <ul class="nav-list">
                         <li class="nav-item">
-                            <a href="#find-work" class="nav-link">Find Work</a>
+                            <a href="login.php" class="nav-link">Find Work</a>
                         </li>
                         <li class="nav-item">
-                            <a href="#hire" class="nav-link">Hire Talent</a>
+                            <a href="login.php" class="nav-link">Hire Talent</a>
                         </li>
                         <li class="nav-item">
-                            <a href="#categories" class="nav-link">Categories</a>
+                            <a href="categories.php" class="nav-link">Categories</a>
                         </li>
                         <li class="nav-item">
-                            <a href="#about" class="nav-link">About</a>
+                            <a href="about.php" class="nav-link">About</a>
                         </li>
                     </ul>
                 </div>
 
                 <div class="nav-buttons">
                     <?php if (isset($_SESSION['user_id'])): ?>
-                        <a href="dashboard.php" class="btn btn-outline">Dashboard</a>
+                        <?php if ($_SESSION['user_type'] === 'client'): ?>
+                            <a href="client-dashboard.php" class="btn btn-outline">Dashboard</a>
+                            <a href="client-profile.php" class="btn btn-outline">Profile</a>
+                        <?php elseif ($_SESSION['user_type'] === 'freelancer'): ?>
+                            <a href="freelancer-dashboard.php" class="btn btn-outline">Dashboard</a>
+                            <a href="freelancer-profile.php" class="btn btn-outline">Profile</a>
+                        <?php else: ?>
+                            <a href="dashboard.php" class="btn btn-outline">Dashboard</a>
+                        <?php endif; ?>
                         <a href="logout.php" class="btn btn-primary">Logout</a>
                     <?php else: ?>
                         <a href="login.php" class="btn btn-outline">Log In</a>

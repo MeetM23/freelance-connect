@@ -30,6 +30,12 @@ try {
         LEFT JOIN categories c ON p.category_id = c.id
         LEFT JOIN users u ON p.client_id = u.id
         WHERE p.id = ? AND p.status = 'open'
+        AND p.id NOT IN (
+            SELECT DISTINCT pr.project_id 
+            FROM proposals pr 
+            INNER JOIN deals d ON pr.id = d.proposal_id 
+            WHERE d.status IN ('ongoing', 'confirmed', 'completed')
+        )
     ");
     $stmt->execute([$project_id]);
     $project = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -49,6 +55,24 @@ try {
     $stmt->execute([$project_id, $user_id]);
     if ($stmt->rowCount() > 0) {
         $errors['general'] = 'You have already submitted a proposal for this project.';
+    }
+} catch (PDOException $e) {
+    // Continue with form
+}
+
+// Check if project has already been accepted by another freelancer
+try {
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as accepted_count 
+        FROM proposals pr 
+        INNER JOIN deals d ON pr.id = d.proposal_id 
+        WHERE pr.project_id = ? AND d.status IN ('ongoing', 'confirmed', 'completed')
+    ");
+    $stmt->execute([$project_id]);
+    $accepted_count = $stmt->fetch()['accepted_count'];
+
+    if ($accepted_count > 0) {
+        $errors['general'] = 'This project has already been accepted by another freelancer.';
     }
 } catch (PDOException $e) {
     // Continue with form

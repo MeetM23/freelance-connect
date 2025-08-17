@@ -10,6 +10,44 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'client') {
 
 $user_id = $_SESSION['user_id'];
 $user_name = $_SESSION['user_name'];
+$message = '';
+$error = '';
+
+// Handle project deletion
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_project'])) {
+    $project_id = $_POST['project_id'];
+
+    // Verify the project belongs to the current user
+    try {
+        $stmt = $pdo->prepare("SELECT id FROM projects WHERE id = ? AND client_id = ?");
+        $stmt->execute([$project_id, $user_id]);
+
+        if ($stmt->rowCount() > 0) {
+            // Check if project has any proposals
+            $stmt = $pdo->prepare("SELECT COUNT(*) as proposal_count FROM proposals WHERE project_id = ?");
+            $stmt->execute([$project_id]);
+            $proposal_count = $stmt->fetch()['proposal_count'];
+
+            if ($proposal_count > 0) {
+                $error = "Cannot delete project. It has " . $proposal_count . " proposal(s). Please review and handle proposals first.";
+            } else {
+                // Delete the project
+                $stmt = $pdo->prepare("DELETE FROM projects WHERE id = ? AND client_id = ?");
+                $stmt->execute([$project_id, $user_id]);
+
+                if ($stmt->rowCount() > 0) {
+                    $message = "Project deleted successfully!";
+                } else {
+                    $error = "Failed to delete project.";
+                }
+            }
+        } else {
+            $error = "Project not found or you don't have permission to delete it.";
+        }
+    } catch (PDOException $e) {
+        $error = "Error deleting project: " . $e->getMessage();
+    }
+}
 
 // Get user's projects
 try {
@@ -244,6 +282,50 @@ try {
             font-size: 0.8rem;
             border: 1px solid #e9ecef;
         }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            border: none;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .delete-confirmation {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+            padding: 0.75rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .delete-confirmation i {
+            color: #f39c12;
+        }
     </style>
 </head>
 
@@ -260,6 +342,14 @@ try {
                 <i class="fas fa-plus"></i> Post New Project
             </a>
         </div>
+
+        <?php if ($message): ?>
+            <div class="alert alert-success"><?php echo htmlspecialchars($message); ?></div>
+        <?php endif; ?>
+
+        <?php if ($error): ?>
+            <div class="alert alert-error"><?php echo htmlspecialchars($error); ?></div>
+        <?php endif; ?>
 
         <?php if (empty($projects)): ?>
             <div class="no-projects">
@@ -319,17 +409,21 @@ try {
                         </div>
 
                         <div class="project-actions">
-                            <a href="view-project.php?id=<?php echo $project['id']; ?>" class="action-btn btn-primary">
-                                <i class="fas fa-eye"></i> View Details
-                            </a>
-                            <a href="view-proposals.php?project_id=<?php echo $project['id']; ?>"
-                                class="action-btn btn-outline">
-                                <i class="fas fa-file-alt"></i> View Proposals (<?php echo $project['proposal_count']; ?>)
-                            </a>
-                            <?php if ($project['status'] === 'open'): ?>
-                                <a href="edit-project.php?id=<?php echo $project['id']; ?>" class="action-btn btn-secondary">
-                                    <i class="fas fa-edit"></i> Edit
-                                </a>
+                         
+
+                            <?php if ($project['proposal_count'] == 0): ?>
+                                <form method="POST" style="display: inline;"
+                                    onsubmit="return confirm('Are you sure you want to delete this project? This action cannot be undone.');">
+                                    <input type="hidden" name="project_id" value="<?php echo $project['id']; ?>">
+                                    <button type="submit" name="delete_project" class="action-btn btn-danger">
+                                        <i class="fas fa-trash"></i> Delete Project
+                                    </button>
+                                </form>
+                            <?php else: ?>
+                                <div class="delete-confirmation">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    <span>Cannot delete - has <?php echo $project['proposal_count']; ?> proposal(s)</span>
+                                </div>
                             <?php endif; ?>
                         </div>
                     </div>
