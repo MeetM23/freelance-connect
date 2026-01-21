@@ -1,27 +1,22 @@
 FROM php:8.2-apache
 
-# Install system dependencies
+# Install required system packages
 RUN apt-get update && apt-get install -y \
-    libpng-dev \
-    libjpeg-dev \
-    libfreetype6-dev \
     libzip-dev \
     zip \
-    unzip
+    unzip \
+    default-mysql-client
 
-# Enable PHP extensions
-RUN docker-php-ext-install \
-    pdo \
-    pdo_mysql \
-    mysqli
+# Install PHP extensions (CRITICAL)
+RUN docker-php-ext-install pdo_mysql mysqli
 
-# Enable Apache rewrite
+# Enable Apache modules
 RUN a2enmod rewrite
 
-# Copy project files
+# Copy application
 COPY . /var/www/html/
 
-# Fix permissions
+# Permissions
 RUN chown -R www-data:www-data /var/www/html
 
 EXPOSE 80
